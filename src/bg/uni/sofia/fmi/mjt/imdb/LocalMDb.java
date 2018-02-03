@@ -50,18 +50,18 @@ public class LocalMDb {
 	public List<String> getByGenre(String genre){
 		List<String> filteredByGenre = new ArrayList<>();
 		filteredByGenre = localMDb.stream()
-								  .filter( s -> s.get("Genre").toString().contains(genre))
-								  .map(s -> s.get("Title").toString())
-								  .collect(Collectors.toList());
+					  .filter( s -> s.get("Genre").toString().contains(genre))
+					  .map(s -> s.get("Title").toString())
+					  .collect(Collectors.toList());
 		return filteredByGenre;
 	}
 	
 	public List<String> getByActors(String actors){
 		List<String> filteredByActors = new ArrayList<>();
 		filteredByActors = localMDb.stream()
-								   .filter( s -> s.get("Actors").toString().contains(actors))
-								   .map(s -> s.get("Title").toString())
-								   .collect(Collectors.toList());
+					   .filter( s -> s.get("Actors").toString().contains(actors))
+					   .map(s -> s.get("Title").toString())
+					   .collect(Collectors.toList());
 		return filteredByActors;
 	}
 	
