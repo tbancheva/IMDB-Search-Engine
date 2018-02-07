@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -21,6 +22,8 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -29,12 +32,23 @@ import org.json.simple.parser.ParseException;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
+import bg.uni.sofia.fmi.mjt.imdb.exceptions.EmptyLocalMDbException;
+import bg.uni.sofia.fmi.mjt.imdb.exceptions.InvalidCommandException;
+import bg.uni.sofia.fmi.mjt.imdb.exceptions.MissingFieldException;
+import bg.uni.sofia.fmi.mjt.imdb.exceptions.MissingMovieTitleException;
+
 public class IMDbServer implements Runnable {
+
+	private static final int BLOCKING_QUEUE_CAPACITY = 100;
+	private static final String CHAR_ENCODING = "UTF-8";
+	private static final String JPG_FILE_EXTENSION = ".jpg";
+	private static final String TXT_FILE_EXTENSION = ".txt";
 
 	private Selector selector;
 	private ServerSocketChannel serverSocket;
 	private InetSocketAddress address;
-	private String response;
+	private BlockingQueue<String> requests;
+
 	private LocalMDb localMDb;
 
 	public IMDbServer(LocalMDb localMDb) throws IOException {
@@ -42,85 +56,122 @@ public class IMDbServer implements Runnable {
 		this.serverSocket = ServerSocketChannel.open();
 		this.address = new InetSocketAddress("localhost", 4444);
 		this.localMDb = localMDb;
+		requests = new ArrayBlockingQueue<>(BLOCKING_QUEUE_CAPACITY);
 
 		serverSocket.bind(address);
 		serverSocket.configureBlocking(false);
 		serverSocket.register(selector, SelectionKey.OP_ACCEPT);
-
 	}
 
 	public void run() {
 		try {
 			runServer();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
+		} catch (IOException | InvalidCommandException | EmptyLocalMDbException | MissingMovieTitleException
+				| ParseException | MissingFieldException | InterruptedException e) {
 			e.printStackTrace();
 		}
 	}
 
-	public void runServer() throws IOException {
+	public void runServer() throws InvalidCommandException, EmptyLocalMDbException, MissingMovieTitleException,
+			MissingFieldException, IOException, ParseException, InterruptedException {
+
 		while (true) {
 
-			selector.select();
+			int readyChannels = selector.select();
+			if (readyChannels == 0)
+				continue;
 
 			Set<SelectionKey> keys = selector.selectedKeys();
 			Iterator<SelectionKey> it = keys.iterator();
 
 			while (it.hasNext()) {
 				SelectionKey myKey = it.next();
-				synchronized (myKey) {
-					if (myKey.isAcceptable()) {
-						SocketChannel clientSocket = serverSocket.accept();
-						clientSocket.configureBlocking(false);
-						clientSocket.register(selector, SelectionKey.OP_READ);
-					} else if (myKey.isReadable()) {
-						SocketChannel clientSocket = (SocketChannel) myKey.channel();
-						ByteBuffer bb = ByteBuffer.allocate(256);
-						clientSocket.read(bb);
-						String result = new String(bb.array()).trim();
 
-						response = getCommand(result);
+				if (myKey.isAcceptable()) {
+					SocketChannel clientSocket = serverSocket.accept();
+					clientSocket.configureBlocking(false);
+					clientSocket.register(selector, SelectionKey.OP_READ);
+				} else if (myKey.isReadable()) {
+					SocketChannel clientSocket = (SocketChannel) myKey.channel();
+					ByteBuffer bb = ByteBuffer.allocate(256);
 
-						bb.flip();
-						bb.clear();
+					clientSocket.read(bb);
 
-						clientSocket.register(selector, SelectionKey.OP_WRITE);
-					} else if (myKey.isWritable()) {
-						SocketChannel clientSocket = (SocketChannel) myKey.channel();
-						ByteBuffer bb = ByteBuffer.allocate(1024);
+					String request = new String(bb.array()).trim();
+					System.out.println("Received: " + request);
+					requests.put(request);
 
-						bb = ByteBuffer.wrap(response.getBytes());
-						clientSocket.write(bb);
+					clientSocket.register(selector, SelectionKey.OP_WRITE);
+				} else if (myKey.isWritable()) {
+					SocketChannel clientSocket = (SocketChannel) myKey.channel();
+					ByteBuffer bb = ByteBuffer.allocate(2048);
 
-						bb.flip();
-						bb.clear();
-						clientSocket.close();
-					}
+					bb = ByteBuffer.wrap(getResponse(requests.take()).getBytes());
+					clientSocket.write(bb);
+
+					clientSocket.close();
 				}
 			}
+
 			it.remove();
 		}
 
 	}
 
-	public String handleRequest(String title) {
+	public String getResponse(String command) throws InvalidCommandException, EmptyLocalMDbException,
+			MissingMovieTitleException, MissingFieldException, IOException, ParseException {
+
+		String[] words;
+		words = command.split(" ");
+
+		if (words[0].equals("get-movie")) {
+			return getMovie(command);
+		} else if (words[0].equals("get-movies")) {
+			return getMovies(command);
+		} else if (words[0].equals("get-tv-series")) {
+			return getTvSeries(command);
+		} else if (words[0].equals("get-movie-poster")) {
+			return getMoviePoster(command);
+		}
+
+		throw new InvalidCommandException("The command is not valid");
+
+	}
+	
+	public String getMovie(String command)
+			throws MissingMovieTitleException, MissingFieldException, IOException, ParseException {
+
+		if (!command.contains("fields")) {
+			String[] words;
+			words = command.split("get-movie");
+			return handleRequest(words[1].trim().replace(' ', '+'));
+		} else {
+			String[] words;
+			words = command.split("get-movie | fields=");
+
+			String[] fields = words[2].split(",");
+
+			StringBuilder result = new StringBuilder();
+			for (String w : fields) {
+				result.append(w + ": " + localMDb.getField(w.trim(), words[1].trim()) + " ");
+			}
+			return result.toString();
+		}
+
+	}
+
+	public String handleRequest(String title) throws MissingMovieTitleException, IOException, ParseException {
 		String movieTitle = title.replace("+", "");
-		
-		if (doesFileAlreadyExists(movieTitle + ".txt")) {
+
+		if (doesFileAlreadyExists(movieTitle + TXT_FILE_EXTENSION)) {
 			addToLocalMDb(readFromFile(movieTitle));
 			return readFromFile(movieTitle);
 		}
 
-		try {
-			JSONObject json = getJSON(title);
-			writeToFile(movieTitle, json);
-			addToLocalMDb(json.toJSONString());
-			return json.toJSONString();
-		} catch (IOException | ParseException e) {
-			e.printStackTrace();
-		}
-
-		return null;
+		JSONObject json = getJSON(title);
+		writeToFile(movieTitle, json);
+		addToLocalMDb(json.toJSONString());
+		return json.toJSONString();
 	}
 
 	public void addToLocalMDb(String json) {
@@ -130,7 +181,7 @@ public class IMDbServer implements Runnable {
 	}
 
 	public static void writeToFile(String title, JSONObject obj) {
-		try (FileWriter file = new FileWriter(title + ".txt")) {
+		try (FileWriter file = new FileWriter(title + TXT_FILE_EXTENSION)) {
 			file.write(obj.toJSONString());
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -146,7 +197,7 @@ public class IMDbServer implements Runnable {
 
 		StringBuilder sb = new StringBuilder();
 
-		try (BufferedReader br = new BufferedReader(new FileReader(title + ".txt"))) {
+		try (BufferedReader br = new BufferedReader(new FileReader(title + TXT_FILE_EXTENSION))) {
 			while (br.ready()) {
 				sb.append(br.readLine());
 			}
@@ -158,134 +209,101 @@ public class IMDbServer implements Runnable {
 
 	}
 
-	public JSONObject getJSON(String title) throws IOException, ParseException {
+	public JSONObject getJSON(String title) throws MissingMovieTitleException, ParseException, IOException {
 
-		URL url = new URL("http://www.omdbapi.com/?apikey=619a884e&t=" + title);
+		URL url;
+		try {
+			url = new URL("http://www.omdbapi.com/?apikey=619a884e&t=" + title);
+		} catch (MalformedURLException e) {
+			throw new MissingMovieTitleException("There is no movie with that title");
+		}
 		InputStream inputStream = url.openStream();
 
 		JSONParser jsonParser = new JSONParser();
-		JSONObject jsonObject = (JSONObject) jsonParser.parse(new InputStreamReader(inputStream, "UTF-8"));
-
+		JSONObject jsonObject = (JSONObject) jsonParser.parse(new InputStreamReader(inputStream, CHAR_ENCODING));
+		inputStream.close();
+				
 		return jsonObject;
 	}
-	
-	public String getCommand(String command) {
-		String[] words;
-		words = command.split(" ");
-		
-		if (words[0].equals("get-movie")) {
-			 return getMovie(command);
-		} else if (words[0].equals("get-movies")) {
-			 return getMovies(command);
-		} else if (words[0].equals("get-tv-series")) {
-			 return getTvSeries(command);
-		} else if (words[0].equals("get-movie-poster")) {
-			 return getMoviePoster(command);
-		} else {
-			System.out.println("inavalid command");
-			// throw new Invalid Command Exception - to do
-		}
-		return null;
-	}
-	
-	public String getTvSeries(String command) {
+
+	public String getTvSeries(String command)
+			throws MissingMovieTitleException, IOException, ParseException {
 		String[] words;
 		words = command.split("get-tv-series| season=");
-		String movieTitle = words[1].trim();
-		String queryTitle = movieTitle.replace(' ', '+') + "&Season=" + words[2].trim();
-		
-		handleRequest(queryTitle);
-		
-		return localMDb.getField("Episodes", movieTitle);
+		String queryTitle = words[1].trim().replace(' ', '+') + "&Season=" + words[2].trim();
+
+		return getJSON(queryTitle).toJSONString();
 	}
-	
-	public String getMoviePoster(String command) {
+
+	public String getMoviePoster(String command) throws MissingMovieTitleException, IOException, ParseException {
 		String[] words;
 		words = command.split("get-movie-poster");
 		String normalTitle = words[1].trim();
 		String queryTitle = words[1].trim().replace(' ', '+');
-					
-		handleRequest(queryTitle); // adding the movie and its file to the local movie database
-				
+
+		handleRequest(queryTitle);
+
 		String posterURL = localMDb.getPosterUrl(normalTitle);
-		try(InputStream in = new URL(posterURL).openStream()){   // downloading the poster
-		    Files.copy(in, Paths.get(normalTitle.replace(" ", "") + ".jpg"));
-		}catch(IOException e) {
+		try (InputStream in = new URL(posterURL).openStream()) {
+			Files.copy(in, Paths.get(normalTitle.replace(" ", "") + JPG_FILE_EXTENSION));
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		return Paths.get(normalTitle + ".jpg").toString();
-	}
-	
-	public String getMovie(String command){
-		String[] words;
-		words = command.split(",|\\s"); // split command on commas and spaces
-		
-		String movieTitle;
-									
-		if(!command.contains("fields")) {    //if there are no fields listed we just check for the movie
-			StringBuilder sb = new StringBuilder();
-			for (int i = 1; i < words.length; i++) {
-				sb.append(words[i]);
-				sb.append('+');  // + is added between the words of the title because that is how 
-			}                    // the query to the imdb api must look
-			int last = sb.lastIndexOf("+");
-			sb.deleteCharAt(last);
-			movieTitle = sb.toString();
-			
-			return handleRequest(movieTitle);
-		}else {         // if there are fields listed first we check for the movie then we acquire the fields
-			StringBuilder sb = new StringBuilder();
-			List<String> fields = new ArrayList<>();
-			int fieldsBeginIndex = 0;
-			
-			for (int i = 1; !words[i].equals("fields="); i++) {  //acquiring the title
-				sb.append(words[i]);
-				sb.append('+');
-				fieldsBeginIndex = i;
-			}
-			fieldsBeginIndex+=2;
-			int last = sb.lastIndexOf("+");
-			sb.deleteCharAt(last);
-			movieTitle = sb.toString();
-			handleRequest(movieTitle);  // adding the movie and its file to the local movie database
-			
-			for (int i = fieldsBeginIndex; i<words.length; i++) {  //acquiring the fields
-				if(!words[i].isEmpty()) {
-					fields.add(words[i]);
-				}
-			}
-			
-			String normalTitle = movieTitle.replace('+', ' ');
-			StringBuilder result = new StringBuilder();
-			for(String w: fields) {     //accumulating the fields with their values
-				result.append(w + ": " + localMDb.getField(w, normalTitle) + " ");
-			}	
-			return result.toString();
-		}
-		
+		return Paths.get(normalTitle + JPG_FILE_EXTENSION).toString();
 	}
 
-	public String getMovies(String command) {
-		
+
+	public String getMovies(String command) throws EmptyLocalMDbException {
+
+		if (localMDb.isEmpty()) {
+			throw new EmptyLocalMDbException("The local movie database is empty.");
+		}
+
 		if (command.contains("order") && command.contains("asc")) {
 			localMDb.sortByRating(1);
 		} else if (command.contains("order") && command.contains("desc")) {
 			localMDb.sortByRating(-1);
 		}
-		
+
 		if (command.contains("genres") && command.contains("actors")) {
 			String[] words = command.split("actors=| genres=");
-			 return localMDb.getByActorsAndGenres(words[1].trim(), words[2].trim());
-		}else if (command.contains("actors")) {
-			String[] words = command.split("actors=");
-			return localMDb.filter(words[1].trim(), "Actors");
-		}else if(command.contains("genres")) {
-			String[] words = command.split("genres=");
-			return localMDb.filter(words[1].trim(), "Genre");
+			String[] genres = words[1].trim().split(",");
+			String[] actors = words[2].trim().split(",");
+
+			List<String> actorsTrimmed = new ArrayList<>();
+			List<String> genresTrimmed = new ArrayList<>();
+
+			for (String s : genres) {
+				genresTrimmed.add(s.trim());
+			}
+
+			for (String s : actors) {
+				actorsTrimmed.add(s.trim());
+			}
+			return localMDb.getByActorsAndGenres(actorsTrimmed, genresTrimmed);
+		} else if (command.contains("actors")) {
+			return getMoviesFiltered(command, "Actors");
+		} else if (command.contains("genres")) {
+			return getMoviesFiltered(command, "Genre");
 		}
-		
+
 		return localMDb.printTitles();
-		
+
+	}
+
+	public String getMoviesFiltered(String command, String filterBy) {
+		String splitAt = filterBy.equals("Genre") ? "genres=" : "actors=";
+
+		String[] words = command.split(splitAt);
+		String[] searchedFor = words[1].trim().split(",");
+
+		List<String> searchedForTrimmed = new ArrayList<>();
+
+		for (String s : searchedFor) {
+			searchedForTrimmed.add(s.trim());
+		}
+
+		return localMDb.filter(searchedForTrimmed, filterBy);
 	}
 
 }
