@@ -6,6 +6,9 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 
+import bg.uni.sofia.fmi.mjt.imdb.exceptions.MissingFieldException;
+import bg.uni.sofia.fmi.mjt.imdb.exceptions.MissingMovieTitleException;
+
 
 public class LocalMDb {
 	private List<HashMap<String, Object>> localMDb;
@@ -18,13 +21,13 @@ public class LocalMDb {
 		localMDb.add(movie);
 	}
 
-	public int getSize() {
-		return localMDb.size();
+	public boolean isEmpty() {
+		return localMDb.isEmpty();
 	}
 
 	public String printTitles() {
 		return 	localMDb.stream()
-				 .map(s -> s.get("Title").toString().concat(" "))
+				        .map(s -> s.get("Title").toString().concat(" "))
 		                .reduce("", String::concat);
 	}
 	
@@ -36,20 +39,24 @@ public class LocalMDb {
 		});
 	}
 	
-	public String filter(String actors, String filterBy){
+	public String filter(List<String> words, String filterBy){
 		return 	localMDb.stream()
-				.filter( s -> s.get(filterBy).toString().contains(actors))
-				.map(s -> s.get("Title").toString().concat(" "))
-				.reduce("", String::concat);
+						.filter( s -> allAreContained(words, s.get(filterBy).toString()))
+				        .map(s -> s.get("Title").toString().concat(" "))
+				        .reduce("", String::concat);
 	}
 	
-	public String getByActorsAndGenres(String actors, String genres){
+	public boolean allAreContained(List<String> words, String field) {
+		return  words.stream().allMatch(field::contains);
+	}
+	
+	public String getByActorsAndGenres(List<String> actors, List<String> genres){
 		
 		return 	localMDb.stream()
-				.filter( s -> s.get("Actors").toString().contains(actors))
-				.filter( s -> s.get("Genre").toString().contains(genres))
-				.map(s -> s.get("Title").toString().concat(" "))
-				.reduce("", String::concat);
+						.filter( s -> allAreContained(actors, s.get("Actors").toString()))
+						.filter( s -> allAreContained(genres, s.get("Genre").toString()))
+						.map(s -> s.get("Title").toString().concat(" "))
+						.reduce("", String::concat);
 	}
 	
 	public String getPosterUrl(String title) {
@@ -63,19 +70,20 @@ public class LocalMDb {
 		return poster;
 	}
 	
-	public String getField(String field, String title) {
+	public String getField(String field, String title) throws MissingMovieTitleException, MissingFieldException{
 		for (HashMap<String, Object> m : localMDb) {
 			if(m.get("Title").equals(title) && isValidField(field)) {
 				return  m.get(field).toString();
 			}
 		}
-		return null;
+		throw new MissingMovieTitleException("The movie is not in the databse");
 	}
 	
-	public boolean isValidField(String field) {
-		if(localMDb.get(0).keySet().contains(field) || field.equals("Episodes")) {
+	public boolean isValidField(String field) throws MissingFieldException {
+		if(localMDb.get(0).keySet().contains(field)) {
 			return true;
 		}
-		return false;
+
+		throw new MissingFieldException("The filed is either missing or invalid");
 	}
 }
