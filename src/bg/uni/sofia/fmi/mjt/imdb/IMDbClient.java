@@ -45,14 +45,11 @@ public class IMDbClient implements Runnable {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-
-		buffer.flip();
-		buffer.clear();
-
+		
 	}
 
 	public void getServerResponse() {
-		ByteBuffer bb = ByteBuffer.allocate(1024);
+		ByteBuffer bb = ByteBuffer.allocate(2048);
 		try {
 			clientSocket.read(bb);
 		} catch (IOException e) {
@@ -63,4 +60,3 @@ public class IMDbClient implements Runnable {
 	}
 
 }
-
