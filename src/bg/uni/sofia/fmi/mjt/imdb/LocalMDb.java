@@ -27,7 +27,7 @@ public class LocalMDb {
 
 	public String printTitles() {
 		return 	localMDb.stream()
-				        .map(s -> s.get("Title").toString().concat(" "))
+				.map(s -> s.get("Title").toString().concat(" "))
 		                .reduce("", String::concat);
 	}
 	
@@ -41,9 +41,9 @@ public class LocalMDb {
 	
 	public String filter(List<String> words, String filterBy){
 		return 	localMDb.stream()
-						.filter( s -> allAreContained(words, s.get(filterBy).toString()))
-				        .map(s -> s.get("Title").toString().concat(" "))
-				        .reduce("", String::concat);
+				.filter( s -> allAreContained(words, s.get(filterBy).toString()))
+				.map(s -> s.get("Title").toString().concat(" "))
+				.reduce("", String::concat);
 	}
 	
 	public boolean allAreContained(List<String> words, String field) {
@@ -53,10 +53,10 @@ public class LocalMDb {
 	public String getByActorsAndGenres(List<String> actors, List<String> genres){
 		
 		return 	localMDb.stream()
-						.filter( s -> allAreContained(actors, s.get("Actors").toString()))
-						.filter( s -> allAreContained(genres, s.get("Genre").toString()))
-						.map(s -> s.get("Title").toString().concat(" "))
-						.reduce("", String::concat);
+				.filter( s -> allAreContained(actors, s.get("Actors").toString()))
+				.filter( s -> allAreContained(genres, s.get("Genre").toString()))
+				.map(s -> s.get("Title").toString().concat(" "))
+				.reduce("", String::concat);
 	}
 	
 	public String getPosterUrl(String title) {
