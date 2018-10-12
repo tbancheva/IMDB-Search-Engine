@@ -1,4 +1,4 @@
-# Internet Movie Database search engine
+﻿# Internet Movie Database search engine
 
 
 
@@ -35,7 +35,7 @@ http://www.omdbapi.com/?t=Titanic (OMDb API-то)
 	{
 		"Title": "Titanic",
 		
-        "Year": "1997",
+        	"Year": "1997",
 
 		"Rated": "PG-13",…
 	}
