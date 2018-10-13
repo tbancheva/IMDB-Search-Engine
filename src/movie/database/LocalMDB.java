@@ -26,7 +26,7 @@ public class LocalMDB {
 
 	public String printTitles() {
 		return 	localMDb.stream()
-				        .map(movie -> movie.get(TITLE_FIELD).toString().concat(" "))
+				.map(movie -> movie.get(TITLE_FIELD).toString().concat(" "))
 		                .reduce("", String::concat);
 	}
 	
@@ -50,17 +50,17 @@ public class LocalMDB {
 	
 	public String getMoviesFiltered(String fieldFilteredBy, String searchedForPartOfField) {
 		return 	localMDb.stream()
-						.filter(movie -> movie.get(fieldFilteredBy).toString().contains(searchedForPartOfField))
-						.map(movie -> movie.get(TITLE_FIELD).toString().concat(" "))
-						.reduce("", String::concat);
+				.filter(movie -> movie.get(fieldFilteredBy).toString().contains(searchedForPartOfField))
+				.map(movie -> movie.get(TITLE_FIELD).toString().concat(" "))
+				.reduce("", String::concat);
 	}
 	
 	
 	public String getField(String field, String title) {
 		return localMDb.stream()
-					   .filter(m -> m.get(TITLE_FIELD).equals(title))
-					   .map(movie -> movie.get(field).toString())
-					   .reduce("", String::concat);
+				.filter(m -> m.get(TITLE_FIELD).equals(title))
+				.map(movie -> movie.get(field).toString())
+				.reduce("", String::concat);
 	}
 	
 	public boolean isValidField(String field) {
