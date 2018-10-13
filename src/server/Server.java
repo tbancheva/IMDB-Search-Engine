@@ -7,7 +7,8 @@ import java.net.Socket;
 import movie.database.LocalMDB;
 
 public class Server {
-
+	private static final int PORT = 4444;
+	
 	private ServerSocket ss;
 	private LocalMDB localMDb;
 
@@ -15,7 +16,7 @@ public class Server {
 		this.localMDb = localMDB;
 
 		try {
-			this.ss = new ServerSocket(4444);
+			this.ss = new ServerSocket(PORT);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

@@ -2,7 +2,6 @@ package server;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
@@ -22,9 +21,12 @@ import movie.database.exceptions.LocalMDBException;
 import movie.database.exceptions.WrongCommandNameException;
 
 public class ClientHandler implements Runnable {
-	private Socket clientSocket;
+	private static final String ENCODING = "UTF-8";
+
 	private Map<String, Command> commands = new HashMap<>();
 	private LocalMDB localMDb;
+	
+	private Socket clientSocket;
 
 	public ClientHandler(Socket clientSocket, LocalMDB localMDb) throws IOException {
 		this.clientSocket = clientSocket;
@@ -33,7 +35,7 @@ public class ClientHandler implements Runnable {
 	}
 
 	@Override
-	public void run() { 
+	public void run() {
 		try {
 			communicateWithClient();
 		} catch (IOException e) {
@@ -44,13 +46,12 @@ public class ClientHandler implements Runnable {
 	private void communicateWithClient() throws IOException {
 		String request, response;
 
-		try (InputStream input = clientSocket.getInputStream();
-				BufferedReader in = new BufferedReader(new InputStreamReader(input, "UTF-8"));
-				PrintWriter dos = new PrintWriter(clientSocket.getOutputStream())) {
+		try (BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), ENCODING));
+				PrintWriter pw = new PrintWriter(clientSocket.getOutputStream())) {
 
 			while (true) {
-				dos.println("Enter movie database command");
-				dos.flush();
+				pw.println("Enter movie database command or type \"exit\" to close");
+				pw.flush();
 				request = in.readLine();
 
 				if (request.equals("exit")) {
@@ -63,8 +64,8 @@ public class ClientHandler implements Runnable {
 					response = e.getMessage();
 				}
 
-				dos.println(response);
-				dos.flush();
+				pw.println(response);
+				pw.flush();
 			}
 
 		} catch (IOException e) {
@@ -86,10 +87,8 @@ public class ClientHandler implements Runnable {
 	private void fill() {
 		commands.put("get-movie", new GetMovie(localMDb));
 		commands.put("get-movie-fields", new GetMovieField(localMDb));
-
 		commands.put("get-movie-poster", new GetMoviePoster(localMDb));
 		commands.put("get-tv-series", new GetTvSeries(localMDb));
-
 		commands.put("get-movies", new GetMovies(localMDb));
 		commands.put("filter-movies", new FilterMovies(localMDb));
 		commands.put("sort-movies", new SortMovies(localMDb));

@@ -2,20 +2,21 @@ package client;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.Scanner;
 
 public class Client {
-
+	private static final String HOST = "localhost";
+	private static final int PORT = 4444;
 	private static final String ENCODING = "UTF-8";
+
 	private Socket clientSocket;
 
 	public Client() {
 		try {
-			this.clientSocket = new Socket("localhost", 4444);
+			this.clientSocket = new Socket(HOST, PORT);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -23,15 +24,14 @@ public class Client {
 
 	public void sendToServer() {
 		try (Scanner input = new Scanner(System.in);
-				InputStream inFromServer = clientSocket.getInputStream();
-				BufferedReader in = new BufferedReader(new InputStreamReader(inFromServer, ENCODING));
-				PrintWriter dos = new PrintWriter(clientSocket.getOutputStream());) {
+				BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), ENCODING));
+				PrintWriter pw = new PrintWriter(clientSocket.getOutputStream());) {
 
 			while (true) {
 				System.out.println(in.readLine());
 				String request = input.nextLine();
-				dos.println(request);
-				dos.flush();
+				pw.println(request);
+				pw.flush();
 
 				if (request.equals("exit")) {
 					break;
@@ -44,7 +44,7 @@ public class Client {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
- 
+
 	}
 
 	public static void main(String[] args) throws IOException {
